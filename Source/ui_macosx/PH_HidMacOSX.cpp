@@ -1,8 +1,18 @@
 #include "PH_HidMacOSX.h"
 #include <stdexcept>
+#include "../AppConfig.h"
+#include <cstdio>
+
+static FILE* g_hidLog = nullptr;
 
 CPH_HidMacOSX::CPH_HidMacOSX()
 {
+	if(!g_hidLog)
+	{
+		auto logPath = CAppConfig::GetBasePath() / "hid.log";
+		g_hidLog = fopen(logPath.native().c_str(), "wb");
+	}
+	
 	m_bindings[PS2::CControllerInfo::ANALOG_LEFT_X]		= std::make_shared<CSimulatedAxisBinding>(kHIDUsage_KeyboardD, kHIDUsage_KeyboardG);
 	m_bindings[PS2::CControllerInfo::ANALOG_LEFT_Y]		= std::make_shared<CSimulatedAxisBinding>(kHIDUsage_KeyboardR, kHIDUsage_KeyboardF);
 
@@ -28,14 +38,21 @@ CPH_HidMacOSX::CPH_HidMacOSX()
 	m_bindings[PS2::CControllerInfo::R3]				= std::make_shared<CSimpleBinding>(kHIDUsage_Keyboard0);
 
 	m_hidManager = IOHIDManagerCreate(kCFAllocatorDefault, 0);
+	fprintf(g_hidLog, "Created HidManager.\r\n");
+	fflush(g_hidLog);
+
 	{
 		CFDictionaryRef matchingDict = CreateDeviceMatchingDictionary(kHIDPage_GenericDesktop, kHIDUsage_GD_Keyboard);
 		IOHIDManagerSetDeviceMatching(m_hidManager, matchingDict);
 		CFRelease(matchingDict);
 	}
+	
 	IOHIDManagerScheduleWithRunLoop(m_hidManager, CFRunLoopGetCurrent(), kCFRunLoopDefaultMode);
 	IOHIDManagerOpen(m_hidManager, kIOHIDOptionsTypeNone);
 	IOHIDManagerRegisterInputValueCallback(m_hidManager, InputValueCallbackStub, this);
+
+	fprintf(g_hidLog, "Init completed.\r\n");
+	fflush(g_hidLog);
 }
 
 CPH_HidMacOSX::~CPH_HidMacOSX()
@@ -113,6 +130,8 @@ void CPH_HidMacOSX::InputValueCallback(IOHIDValueRef valueRef)
 	uint32 usage = IOHIDElementGetUsage(elementRef);
 	uint32 usagePage = IOHIDElementGetUsagePage(elementRef);
 	CFIndex state = IOHIDValueGetIntegerValue(valueRef);
+	fprintf(g_hidLog, "Getting input, usagePage: %d, usage: %d, state: %ld.\r\n", usagePage, usage, state);
+	fflush(g_hidLog);
 	if(usagePage != kHIDPage_KeyboardOrKeypad) return;
 	for(auto bindingIterator(std::begin(m_bindings));
 		bindingIterator != std::end(m_bindings); bindingIterator++)
